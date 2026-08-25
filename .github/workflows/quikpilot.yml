@@ -1,0 +1,251 @@
+# ============================================================================
+# QuikPilot — GENERATED FILE. Do not edit by hand.
+#
+# PHASE 0: runner logic is inlined below. Phase 1 replaces everything after the
+# setup step with `npx @quikit/quikpilot-runner@1`. Do not onboard a second
+# repository against this file — see Q12 in the delivery plan.
+#
+# This file lives in YOUR repository, so QuikIT cannot update it. Any change
+# arrives as a new pull request.
+#
+# templateVersion: 2
+# project: cmqp48oa108p2ev2mpquv9aga
+# ============================================================================
+name: QuikPilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: QuikPilot run id
+        required: true
+      callback_url:
+        description: Where QuikPilot expects the result
+        required: true
+      packet_url:
+        description: Where to fetch this run's work packet
+        required: true
+      run_token:
+        description: Short-lived, run-scoped QuikPilot token
+        required: true
+
+# Two dispatches for one run must never race.
+concurrency:
+  group: quikpilot-${{ inputs.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  quikpilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Secrets live in env, never in argv. Every curl below reads its auth
+      # header from stdin (`--config -`) so the token is invisible to `ps`.
+      RUN_TOKEN: ${{ inputs.run_token }}
+      CALLBACK_URL: ${{ inputs.callback_url }}
+      PACKET_URL: ${{ inputs.packet_url }}
+      RUN_ID: ${{ inputs.run_id }}
+      # Written outside the working tree so it can never be committed.
+      PACKET: ${{ runner.temp }}/quikpilot-packet.json
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Fetch work packet
+        run: |
+          set -euo pipefail
+          printf 'header = "Authorization: Bearer %s"\n' "$RUN_TOKEN" \
+            | curl --config - --fail-with-body --silent --show-error \
+                   --output "$PACKET" "$PACKET_URL"
+          jq -e '.success == true' "$PACKET" > /dev/null
+
+      - name: Check out the target branch
+        run: |
+          set -euo pipefail
+          # Dispatch runs this workflow against the DEFAULT branch, because that
+          # is the only place workflow_dispatch can find the file. The PR base
+          # may be a different branch, and cutting from the wrong one would drag
+          # unrelated commits into the pull request.
+          BASE=$(jq -r '.data.targetBranch // empty' "$PACKET")
+          if [ -n "$BASE" ] && [ "$BASE" != "$GITHUB_REF_NAME" ]; then
+            git fetch origin "$BASE"
+            git checkout "$BASE"
+          fi
+
+      - name: 'PHASE 0 PLACEHOLDER — inert marker, NOT functionality'
+        run: |
+          set -euo pipefail
+          # Phase 0 has no agent. This proves the loop end to end without
+          # touching real source, which would risk breaking the build for a
+          # reason nobody would connect back to QuikPilot.
+          mkdir -p .quikpilot
+          printf 'QuikPilot Phase 0 skeleton marker for run %s\n' "$RUN_ID" \
+            >> .quikpilot/phase0-marker.txt
+
+      - name: Setup
+        run: |
+          set -euo pipefail
+          CMD=$(jq -r '.data.commands.setup // empty' "$PACKET")
+          if [ -n "$CMD" ]; then bash -c "$CMD"; fi
+
+      - name: Lint
+        run: |
+          set -euo pipefail
+          CMD=$(jq -r '.data.commands.lint // empty' "$PACKET")
+          if [ -n "$CMD" ]; then bash -c "$CMD"; fi
+
+      - name: Test
+        id: test
+        # Without this a failing suite skips every step below, and the result
+        # never reaches QuikTrack at all. Design §5.2.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          CMD=$(jq -r '.data.commands.test // empty' "$PACKET")
+          if [ -n "$CMD" ]; then bash -c "$CMD"; fi
+
+      - name: Report test results to QuikTest
+        # always(): a failing suite is exactly when the results matter most —
+        # the same reason the Test step above carries continue-on-error.
+        if: always()
+        env:
+          CI_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # NULL IS THE COMMON PATH IN PHASE 0, not an edge case (D19): QuikPilot
+          # has no test cases of its own yet, so there is usually no QuikTest run
+          # to report into. Exit 0 quietly rather than failing the job.
+          RESULTS_URL=$(jq -r '.data.quikTest.resultsUrl // empty' "$PACKET")
+          if [ -z "$RESULTS_URL" ]; then
+            echo "packet.quikTest is null — this run has no QuikTest run to report into."
+            exit 0
+          fi
+          # QtPilotConfig has no column for the report path, so this is a
+          # convention over a short list of common locations. A project that
+          # writes its report elsewhere reports nothing and finds out from this
+          # log — a warning, not an error: a missing artefact must not mark the
+          # run failed.
+          # `|| true` is load-bearing: `head -n 1` closes the pipe, find takes
+          # SIGPIPE, and under `set -o pipefail` that would abort the step with
+          # no message. Same guard the guardrail step below uses.
+          REPORT=$(find . -path ./node_modules -prune -o \
+            \( -name 'junit*.xml' \
+               -o -path './test-results/*.xml' \
+               -o -path './reports/junit*.xml' \
+               -o -path './target/surefire-reports/*.xml' \) -print 2>/dev/null \
+            | head -n 1 || true)
+          if [ -z "$REPORT" ]; then
+            echo "::warning::QuikPilot found no JUnit report — no results reported to QuikTest."
+            exit 0
+          fi
+          echo "reporting $REPORT"
+          # ciUrl only. NOT build: the QuikTest run already carries
+          # quikpilot-<runId>, and stamping a different build here would break
+          # the correlation findOrCreateRunForBuild depends on.
+          CI=$(jq -rn --arg u "$CI_URL" '$u|@uri')
+          printf 'header = "Authorization: Bearer %s"\n' "$RUN_TOKEN" \
+            | curl --config - --fail-with-body --silent --show-error \
+                   -H "Content-Type: text/xml" \
+                   --data-binary "@$REPORT" \
+                   "$RESULTS_URL?ciUrl=$CI"
+          # The guardrail below runs `git add -A`, so a report left in the tree
+          # would be committed into the customer's pull request. Reviewers should
+          # not have to skip past a CI artefact in the diff.
+          rm -f "$REPORT"
+
+      - name: Guardrail — refuse denied paths
+        run: |
+          set -euo pipefail
+          git add -A
+          VIOLATIONS=""
+          while IFS= read -r pattern; do
+            [ -n "$pattern" ] || continue
+            # git's :(glob) pathspec understands ** properly — safer than
+            # hand-rolling a glob-to-regex conversion.
+            HIT=$(git diff --cached --name-only -- ":(glob)$pattern" || true)
+            if [ -n "$HIT" ]; then
+              VIOLATIONS="${VIOLATIONS}${HIT}"$'\n'
+            fi
+          done < <(jq -r '.data.guardrails.deniedPaths[]? // empty' "$PACKET")
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::QuikPilot touched denied paths:"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+
+      - name: Commit and push
+        id: push
+        run: |
+          set -euo pipefail
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # The branch name comes from the packet, not from run_id: QuikTrack
+          # already computed and stored it, and two sources for one value will
+          # eventually disagree.
+          BRANCH=$(jq -r '.data.branch // empty' "$PACKET")
+          if [ -z "$BRANCH" ]; then
+            echo "::error::packet carried no branch name"; exit 1
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          git config user.name  "quikpilot[bot]"
+          git config user.email "quikpilot@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git commit -m "QuikPilot Phase 0 skeleton (run $RUN_ID)"
+          git push --set-upstream origin "$BRANCH"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open pull request
+        id: pr
+        if: steps.push.outputs.changed == 'true'
+        env:
+          # github.token, not secrets.GITHUB_TOKEN — same credential, and it
+          # keeps `secrets.` out of a file we generate into someone's repo.
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BRANCH: ${{ steps.push.outputs.branch }}
+        run: |
+          set -euo pipefail
+          BASE=$(jq -r '.data.targetBranch // empty' "$PACKET")
+          [ -n "$BASE" ] || BASE="$DEFAULT_BRANCH"
+          URL=$(gh pr create --base "$BASE" --head "$BRANCH" \
+                  --title "QuikPilot: run $RUN_ID" \
+                  --body "Opened by QuikPilot (Phase 0 skeleton). Run: $RUN_ID")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "number=$(gh pr view "$URL" --json number -q .number)" >> "$GITHUB_OUTPUT"
+
+      - name: Report back to QuikTrack
+        # A run that fails silently is worse than one that fails loudly.
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          # Captured but not reported: the callback schema has no field for it,
+          # and QuikTest is where per-test outcomes belong (Q7). Surfacing it
+          # here would mean inventing a field that duplicates that record.
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          BRANCH: ${{ steps.push.outputs.branch }}
+        run: |
+          set -euo pipefail
+          STATUS=completed
+          if [ "$JOB_STATUS" != "success" ]; then STATUS=failed; fi
+          echo "test step outcome: $TEST_OUTCOME"
+          BODY=$(jq -n --arg status "$STATUS" \
+                       --arg branch "${BRANCH:-}" \
+                       --argjson pr "${PR_NUMBER:-null}" \
+                       '{status:$status, branch:$branch, prNumber:$pr}
+                        | with_entries(select(.value != null and .value != ""))')
+          printf 'header = "Authorization: Bearer %s"\n' "$RUN_TOKEN" \
+            | curl --config - --fail-with-body --silent --show-error \
+                   -H "Content-Type: application/json" \
+                   --data "$BODY" "$CALLBACK_URL"
