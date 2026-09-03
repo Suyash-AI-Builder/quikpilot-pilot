@@ -8,7 +8,7 @@
 # This file lives in YOUR repository, so QuikIT cannot update it. Any change
 # arrives as a new pull request.
 #
-# templateVersion: 3
+# templateVersion: 4
 # project: cmqp48oa108p2ev2mpquv9aga
 # ============================================================================
 name: QuikPilot
@@ -36,7 +36,6 @@ concurrency:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   quikpilot:
@@ -75,9 +74,15 @@ jobs:
       - name: Fetch work packet
         run: |
           set -euo pipefail
+          # githubRunId is runner-supplied evidence this run belongs to this
+          # job, not a security credential — nothing downstream authorises on
+          # it (QUIKTR-603 sign-off). Sent here, at the runner's first action,
+          # because that survives even a job that dies immediately after
+          # starting, which is the failure the workflow_run webhook exists to
+          # catch.
           printf 'header = "Authorization: Bearer %s"\n' "$RUN_TOKEN" \
             | curl --config - --fail-with-body --silent --show-error \
-                   --output "$PACKET" "$PACKET_URL"
+                   --output "$PACKET" "${PACKET_URL}?githubRunId=${GITHUB_RUN_ID}"
           jq -e '.success == true' "$PACKET" > /dev/null
 
       - name: Check out the target branch
@@ -216,32 +221,12 @@ jobs:
           git push --set-upstream origin "$BRANCH"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Open pull request
-        id: pr
-        if: steps.push.outputs.changed == 'true'
-        env:
-          # github.token, not secrets.GITHUB_TOKEN — same credential, and it
-          # keeps `secrets.` out of a file we generate into someone's repo.
-          GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ steps.push.outputs.branch }}
-        run: |
-          set -euo pipefail
-          BASE=$(jq -r '.data.targetBranch // empty' "$PACKET")
-          # $GITHUB_REF_NAME, not github.event.repository.default_branch: this
-          # fallback fires only when the packet carries no targetBranch, and in
-          # exactly that case dispatch used the repo's default branch as the
-          # workflow ref (see dispatch.ts) — so the ref IS the default branch.
-          # It is also always populated, which the event payload field was not
-          # relied upon to be. An empty BASE makes `gh pr create --base ""` fail.
-          [ -n "$BASE" ] || BASE="$GITHUB_REF_NAME"
-          URL=$(gh pr create --base "$BASE" --head "$BRANCH" \
-                  --title "QuikPilot: run $RUN_ID" \
-                  --body "Opened by QuikPilot (Phase 0 skeleton). Run: $RUN_ID")
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
-          echo "number=$(gh pr view "$URL" --json number -q .number)" >> "$GITHUB_OUTPUT"
-
       - name: Report back to QuikTrack
         # A run that fails silently is worse than one that fails loudly.
+        #
+        # No prNumber, and no PR-open step above (v4, QUIKTR-606 / D21):
+        # QuikTrack opens the run's pull request itself, server-side, once
+        # this callback reports the branch pushed — see the callback route.
         if: always()
         env:
           JOB_STATUS: ${{ job.status }}
@@ -249,7 +234,6 @@ jobs:
           # and QuikTest is where per-test outcomes belong (Q7). Surfacing it
           # here would mean inventing a field that duplicates that record.
           TEST_OUTCOME: ${{ steps.test.outcome }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
           BRANCH: ${{ steps.push.outputs.branch }}
         run: |
           set -euo pipefail
@@ -258,8 +242,7 @@ jobs:
           echo "test step outcome: $TEST_OUTCOME"
           BODY=$(jq -n --arg status "$STATUS" \
                        --arg branch "${BRANCH:-}" \
-                       --argjson pr "${PR_NUMBER:-null}" \
-                       '{status:$status, branch:$branch, prNumber:$pr}
+                       '{status:$status, branch:$branch}
                         | with_entries(select(.value != null and .value != ""))')
           printf 'header = "Authorization: Bearer %s"\n' "$RUN_TOKEN" \
             | curl --config - --fail-with-body --silent --show-error \
