@@ -77,4 +77,12 @@ jobs:
           node-version: "20"
 
       - name: Run QuikPilot
-        run: npx --yes @quikit/quikpilot-runner@7.0.0
+        # REHEARSAL (QUIKTR-943): installs the exact packed tarball built
+        # from packages/quikpilot-runner@7.0.0 instead of resolving from the
+        # npm registry (still unpublished at rehearsal time). npm install of
+        # a local tarball is npm's own tarball-resolution path — same `bin`
+        # wiring `npx --yes @quikit/quikpilot-runner@7.0.0` would use once
+        # published. This branch/step is throwaway; main is untouched.
+        run: |
+          npm install --no-save ./quikit-quikpilot-runner-7.0.0.tgz
+          npx --no-install quikpilot-runner
