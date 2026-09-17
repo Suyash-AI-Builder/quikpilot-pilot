@@ -77,4 +77,4 @@ jobs:
           node-version: "20"
 
       - name: Run QuikPilot
-        run: npx --yes @quikit/quikpilot-runner@7.0.0
+        run: npx --yes @quikit/quikpilot-runner@7.0.2
