@@ -31,9 +31,6 @@ export function validateExpense(input, memberIds) {
   if (amountMinor === null) {
     throw new ValidationError("amount", "Amount must be a number.");
   }
-  if (amountMinor <= 0) {
-    throw new ValidationError("amount", "Amount must be a positive, non-zero number.");
-  }
 
   if (!memberIds.includes(input.paidBy)) {
     throw new ValidationError("paidBy", "The payer must be a member of this group.");
