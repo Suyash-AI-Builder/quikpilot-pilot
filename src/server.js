@@ -11,7 +11,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3300;
 
 function json(res, status, body) {
-  res.writeHead(status, { "Content-Type": "application/json" });
+  res.writeHead(status, {"Content-Type": "application/json"});
   res.end(JSON.stringify(body));
 }
 
@@ -33,18 +33,18 @@ export const app = createServer(async (req, res) => {
   try {
     if (req.method === "GET" && url.pathname === "/") {
       const html = await readFile(join(here, "..", "public", "index.html"), "utf8");
-      res.writeHead(200, { "Content-Type": "text/html" });
+      res.writeHead(200, {"Content-Type": "text/html"});
       return res.end(html);
     }
 
     if (req.method === "GET" && url.pathname === "/api/groups") {
-      return json(res, 200, listGroups().map((g) => ({ id: g.id, name: g.name, memberCount: g.members.length })));
+      return json(res, 200, listGroups().map((g) => ({id: g.id, name: g.name, memberCount: g.members.length})));
     }
 
     // /api/groups/:id
     if (parts[0] === "api" && parts[1] === "groups" && parts[2] && parts.length === 3) {
       const group = getGroup(parts[2]);
-      if (!group) return json(res, 404, { error: "Group not found." });
+      if (!group) return json(res, 404, {error: "Group not found."});
       if (req.method === "GET") {
         const balances = computeBalances(group);
         return json(res, 200, {
@@ -59,24 +59,29 @@ export const app = createServer(async (req, res) => {
     // /api/groups/:id/expenses
     if (parts[0] === "api" && parts[1] === "groups" && parts[3] === "expenses" && req.method === "POST") {
       const group = getGroup(parts[2]);
-      if (!group) return json(res, 404, { error: "Group not found." });
+      if (!group) return json(res, 404, {error: "Group not found."});
 
       const body = await readBody(req);
-      if (body === null) return json(res, 400, { error: "Body must be valid JSON." });
+      if (body === null) return json(res, 400, {error: "Body must be valid JSON."});
 
       const memberIds = group.members.map((m) => m.id);
+      // Validate that the expense amount is not negative
+      if (body.amount < 0) {
+        return json(res, 400, {error: "Expense amount cannot be negative.", field: "amount"});
+      }
+
       const expense = validateExpense(body, memberIds);
       const created = addExpense(group, expense);
       return json(res, 201, created);
     }
 
-    return json(res, 404, { error: "Not found." });
+    return json(res, 404, {error: "Not found."});
   } catch (err) {
     if (err instanceof ValidationError) {
-      return json(res, err.status, { error: err.message, field: err.field });
+      return json(res, err.status, {error: err.message, field: err.field});
     }
     console.error("Unhandled error:", err);
-    return json(res, 500, { error: "Something went wrong." });
+    return json(res, 500, {error: "Something went wrong."});
   }
 });
 
