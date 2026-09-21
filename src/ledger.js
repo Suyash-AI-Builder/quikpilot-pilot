@@ -1,4 +1,5 @@
 import { splitEvenly } from "./money.js";
+import { validateExpense } from "./validation.js";
 
 /**
  * A group's ledger. Expenses go in; who-owes-whom comes out.
@@ -14,7 +15,9 @@ export function createGroup(id, name, members) {
 }
 
 export function addExpense(group, expense) {
-  const entry = { id: `exp_${group.expenses.length + 1}`, ...expense, createdAt: new Date().toISOString() };
+  const memberIds = group.members.map(m => m.id);
+  const validatedExpense = validateExpense(expense, memberIds);
+  const entry = { id: `exp_${group.expenses.length + 1}`, ...validatedExpense, createdAt: new Date().toISOString() };
   group.expenses.push(entry);
   return entry;
 }
