@@ -64,10 +64,6 @@ export const app = createServer(async (req, res) => {
       const body = await readBody(req);
       if (body === null) return json(res, 400, { error: "Body must be valid JSON." });
 
-      if (body.amount < 0) {
-        return json(res, 400, { error: "Expense amount cannot be negative.", field: "amount" });
-      }
-
       const memberIds = group.members.map((m) => m.id);
       const expense = validateExpense(body, memberIds);
       const created = addExpense(group, expense);
