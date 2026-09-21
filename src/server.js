@@ -70,21 +70,6 @@ export const app = createServer(async (req, res) => {
       return json(res, 201, created);
     }
 
-    // /api/groups/:id/expenses/:expenseId - PUT for update
-    if (parts[0] === "api" && parts[1] === "groups" && parts[3] === "expenses" && parts[4] && parts.length === 5 && req.method === "PUT") {
-      const group = getGroup(parts[2]);
-      if (!group) return json(res, 404, { error: "Group not found." });
-
-      const body = await readBody(req);
-      if (body === null) return json(res, 400, { error: "Body must be valid JSON." });
-
-      const memberIds = group.members.map((m) => m.id);
-      const expense = validateExpense(body, memberIds);
-      // In a real app, you'd fetch the expense by parts[4], update it with `expense`,
-      // and then return the updated expense. For this exercise, we're just validating.
-      return json(res, 200, { message: "Expense validated and would be updated.", validatedExpense: expense });
-    }
-
     return json(res, 404, { error: "Not found." });
   } catch (err) {
     if (err instanceof ValidationError) {
