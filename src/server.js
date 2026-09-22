@@ -66,9 +66,7 @@ export const app = createServer(async (req, res) => {
 
       const memberIds = group.members.map((m) => m.id);
       const expense = validateExpense(body, memberIds);
-      if (expense.amountMinor <= 0) {
-        throw new ValidationError("amount", "Amount must be positive.");
-      }
+      
       const created = addExpense(group, expense);
       return json(res, 201, created);
     }
