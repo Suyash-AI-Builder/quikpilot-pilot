@@ -66,7 +66,6 @@ export const app = createServer(async (req, res) => {
 
       const memberIds = group.members.map((m) => m.id);
       const expense = validateExpense(body, memberIds);
-      
       const created = addExpense(group, expense);
       return json(res, 201, created);
     }
