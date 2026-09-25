@@ -10,6 +10,18 @@ export class ValidationError extends Error {
 }
 
 /**
+ * Validates if a value is a positive number (including zero).
+ * Throws ValidationError if not.
+ */
+export function validatePositiveNumber(field, value, message) {
+  const n = typeof value === "number" ? value : Number(String(value).trim());
+  if (!Number.isFinite(n) || n < 0) {
+    throw new ValidationError(field, message);
+  }
+  return n;
+}
+
+/**
  * Validate an incoming expense against a group's member list.
  * Throws ValidationError with the offending field named, so the API can return
  * something a user can act on rather than "invalid request".
@@ -31,6 +43,7 @@ export function validateExpense(input, memberIds) {
   if (amountMinor === null) {
     throw new ValidationError("amount", "Amount must be a number.");
   }
+  validatePositiveNumber("amount", amountMinor, "Amount must be a positive number.");
 
   if (!memberIds.includes(input.paidBy)) {
     throw new ValidationError("paidBy", "The payer must be a member of this group.");
