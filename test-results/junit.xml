@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="8" failures="0" errors="0" time="0.0095677">
+    <testsuite name="src/ledger.test.js" timestamp="2026-09-25T07:03:18.091Z" hostname="DESKTOP-0L8SLMJ" tests="3" failures="0" errors="0" skipped="0" time="0.004995">
+        <testcase classname="src/ledger.test.js" name="computeBalances &gt; credits the payer and debits each participant" time="0.0026746">
+        </testcase>
+        <testcase classname="src/ledger.test.js" name="computeBalances &gt; balances to zero on an amount that does not divide evenly" time="0.0002282">
+        </testcase>
+        <testcase classname="src/ledger.test.js" name="settleUp &gt; produces payments that clear every balance" time="0.0004324">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/money.test.js" timestamp="2026-09-25T07:03:18.093Z" hostname="DESKTOP-0L8SLMJ" tests="5" failures="0" errors="0" skipped="0" time="0.0045727">
+        <testcase classname="src/money.test.js" name="toMinor &gt; converts a decimal string to integer minor units" time="0.0015987">
+        </testcase>
+        <testcase classname="src/money.test.js" name="toMinor &gt; returns null for a non-numeric value" time="0.0001874">
+        </testcase>
+        <testcase classname="src/money.test.js" name="fromMinor &gt; renders minor units with two decimal places" time="0.0002646">
+        </testcase>
+        <testcase classname="src/money.test.js" name="splitEvenly &gt; splits an exactly divisible amount" time="0.0007209">
+        </testcase>
+        <testcase classname="src/money.test.js" name="splitEvenly &gt; distributes the remainder so the parts sum to the total" time="0.0001788">
+        </testcase>
+    </testsuite>
+</testsuites>
